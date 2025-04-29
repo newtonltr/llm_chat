@@ -2,124 +2,16 @@
 # -*- coding: utf-8 -*-
 
 """
-LLM聊天程序
-提供GUI界面，允许用户选择大模型、修改模型参数、添加/删除模型、选择提示词等功能
+UI组件模块
+包含应用程序的图形用户界面组件
 """
 
-import json
-import os
-import requests
-import threading
 import tkinter as tk
 from tkinter import ttk, messagebox, scrolledtext
-from abc import ABC, abstractmethod
+import threading
 
-class ModelHandler(ABC):
-    """模型处理器基类"""
-
-    def __init__(self, model_config):
-        self.name = model_config["name"]
-        self.api_key = model_config["api_key"]
-        self.api_url = model_config["api_url"]
-        self.model_name = model_config["model_name"]
-
-    @abstractmethod
-    def send_message(self, message):
-        """发送消息到模型并返回回复"""
-        pass
-
-class OpenRouterHandler(ModelHandler):
-    """OpenRouter API处理器"""
-
-    def send_message(self, message):
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
-        }
-
-        data = {
-            "model": self.model_name,
-            "messages": [{"role": "user", "content": message}]
-        }
-
-        try:
-            response = requests.post(self.api_url, headers=headers, json=data)
-            response.raise_for_status()
-            result = response.json()
-            return result["choices"][0]["message"]["content"]
-        except Exception as e:
-            return f"错误: {str(e)}"
-
-class GeminiHandler(ModelHandler):
-    """Google Gemini API处理器"""
-
-    def send_message(self, message):
-        # 构建正确的URL格式
-        # 如果api_url中已经包含了模型名称和:generateContent，则直接使用
-        # 否则，构建正确的URL
-        if ":generateContent" in self.api_url:
-            url = f"{self.api_url}?key={self.api_key}"
-        else:
-            # 标准URL格式：https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent
-            base_url = "https://generativelanguage.googleapis.com/v1beta/models"
-            url = f"{base_url}/{self.model_name}:generateContent?key={self.api_key}"
-
-        data = {
-            "contents": [
-                {
-                    "parts": [
-                        {"text": message}
-                    ]
-                }
-            ]
-        }
-
-        headers = {
-            "Content-Type": "application/json"
-        }
-
-        try:
-            response = requests.post(url, headers=headers, json=data)
-            response.raise_for_status()
-            result = response.json()
-            return result["candidates"][0]["content"]["parts"][0]["text"]
-        except Exception as e:
-            return f"错误: {str(e)}"
-
-class DeepSeekHandler(ModelHandler):
-    """DeepSeek API处理器"""
-
-    def send_message(self, message):
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
-        }
-
-        data = {
-            "model": self.model_name,
-            "messages": [{"role": "user", "content": message}]
-        }
-
-        try:
-            response = requests.post(self.api_url, headers=headers, json=data)
-            response.raise_for_status()
-            result = response.json()
-            return result["choices"][0]["message"]["content"]
-        except Exception as e:
-            return f"错误: {str(e)}"
-
-def create_model_handler(model_config):
-    """创建适当的模型处理器"""
-    api_url = model_config["api_url"].lower()
-
-    if "openrouter.ai" in api_url:
-        return OpenRouterHandler(model_config)
-    elif "googleapis.com" in api_url:
-        return GeminiHandler(model_config)
-    elif "deepseek.com" in api_url:
-        return DeepSeekHandler(model_config)
-    else:
-        raise ValueError(f"不支持的API URL: {api_url}")
+from model_handlers import create_model_handler
+from config_manager import ConfigManager
 
 class LLMChatApp:
     """LLM聊天应用程序"""
@@ -129,58 +21,15 @@ class LLMChatApp:
         self.root.title("LLM聊天程序")
         self.root.geometry("1000x700")
 
+        # 初始化配置管理器
+        self.config_manager = ConfigManager()
+
         # 加载配置
-        self.load_config()
-        self.load_prompts()
+        self.config = self.config_manager.load_config()
+        self.prompts = self.config_manager.load_prompts()
 
         # 创建界面
         self.create_ui()
-
-    def load_config(self):
-        """加载配置文件"""
-        try:
-            with open("llm_config.json", "r", encoding="utf-8") as f:
-                self.config = json.load(f)
-        except Exception as e:
-            messagebox.showerror("错误", f"加载配置文件时出错: {str(e)}")
-            self.config = {"models": []}
-
-    def load_prompts(self):
-        """加载提示词文件"""
-        try:
-            with open("prompts.json", "r", encoding="utf-8") as f:
-                self.prompts = json.load(f)
-        except FileNotFoundError:
-            # 如果文件不存在，创建默认提示词
-            self.prompts = {
-                "prompts": [
-                    {
-                        "name": "简单问候",
-                        "content": "你好，请简单介绍一下你自己。"
-                    }
-                ]
-            }
-            self.save_prompts()
-        except Exception as e:
-            messagebox.showerror("错误", f"加载提示词文件时出错: {str(e)}")
-            self.prompts = {"prompts": []}
-
-    def save_config(self):
-        """保存配置文件"""
-        try:
-            with open("llm_config.json", "w", encoding="utf-8") as f:
-                json.dump(self.config, f, ensure_ascii=False, indent=4)
-            messagebox.showinfo("成功", "配置已保存")
-        except Exception as e:
-            messagebox.showerror("错误", f"保存配置文件时出错: {str(e)}")
-
-    def save_prompts(self):
-        """保存提示词文件"""
-        try:
-            with open("prompts.json", "w", encoding="utf-8") as f:
-                json.dump(self.prompts, f, ensure_ascii=False, indent=4)
-        except Exception as e:
-            messagebox.showerror("错误", f"保存提示词文件时出错: {str(e)}")
 
     def create_ui(self):
         """创建用户界面"""
@@ -286,7 +135,7 @@ class LLMChatApp:
         self.chat_text.bind("<Button-3>", self.show_context_menu)
 
         # 绑定标准复制快捷键
-        self.chat_text.bind("<Control-c>", lambda e: self.copy_selected_text())
+        self.chat_text.bind("<Control-c>", lambda _: self.copy_selected_text())
 
         # 配置标签样式 - 使用更轻量级的样式，确保文本可选择
         self.chat_text.tag_configure("user_header", foreground="white", background="#007bff",
@@ -334,23 +183,19 @@ class LLMChatApp:
             self.prompt_combo.current(0)
             self.on_prompt_selected(None)  # 更新提示词内容显示区域
 
-    def on_model_selected(self, event):
+    def on_model_selected(self, _):
         """模型选择事件处理"""
         # 由于我们不再在主界面显示模型参数，此方法现在只是一个占位符
         # 如果将来需要在选择模型时执行某些操作，可以在这里添加代码
         pass
 
-    def on_prompt_selected(self, event):
+    def on_prompt_selected(self, _):
         """提示词选择事件处理"""
         if not self.prompt_combo.get():
             return
 
         # 获取选中的提示词
-        selected_prompt = None
-        for prompt in self.prompts["prompts"]:
-            if prompt["name"] == self.prompt_combo.get():
-                selected_prompt = prompt
-                break
+        selected_prompt = self.config_manager.get_prompt_by_name(self.prompt_combo.get())
 
         if selected_prompt:
             # 只更新提示词内容显示区域，不再更新输入框
@@ -436,14 +281,11 @@ class LLMChatApp:
             # 根据模式执行不同操作
             if edit_mode:
                 # 更新现有模型
-                for i, model in enumerate(self.config["models"]):
-                    if model["name"] == original_name:
-                        self.config["models"][i] = model_data
-                        break
+                self.config_manager.update_model(original_name, model_data)
                 messagebox.showinfo("成功", f"已更新模型 '{name}'")
             else:
                 # 添加新模型
-                self.config["models"].append(model_data)
+                self.config_manager.add_model(model_data)
                 messagebox.showinfo("成功", f"已添加模型 '{name}'")
 
             # 更新下拉框
@@ -485,11 +327,7 @@ class LLMChatApp:
             return
 
         # 获取选中的模型
-        selected_model = None
-        for model in self.config["models"]:
-            if model["name"] == self.model_combo.get():
-                selected_model = model
-                break
+        selected_model = self.config_manager.get_model_by_name(self.model_combo.get())
 
         if not selected_model:
             messagebox.showerror("错误", "未找到选中的模型")
@@ -497,10 +335,6 @@ class LLMChatApp:
 
         # 打开编辑对话框
         self.add_model_dialog(edit_mode=True, model_data=selected_model)
-
-    def update_model(self):
-        """更新模型参数（已废弃，保留兼容性）"""
-        self.edit_model()
 
     def delete_model(self):
         """删除模型"""
@@ -517,24 +351,24 @@ class LLMChatApp:
         model_name = self.model_combo.get()
 
         # 删除模型
-        for i, model in enumerate(self.config["models"]):
-            if model["name"] == model_name:
-                del self.config["models"][i]
+        if self.config_manager.delete_model(model_name):
+            # 更新下拉框
+            self.update_model_combo()
 
-                # 更新下拉框
-                self.update_model_combo()
+            # 选择下一个可用的模型
+            if self.config["models"]:
+                # 如果删除的是最后一个模型，选择新的最后一个
+                if current_index >= len(self.config["models"]):
+                    self.model_combo.current(len(self.config["models"]) - 1)
+                # 否则保持相同的索引
+                else:
+                    self.model_combo.current(current_index)
 
-                # 选择下一个可用的模型
-                if self.config["models"]:
-                    # 如果删除的是最后一个模型，选择新的最后一个
-                    if current_index >= len(self.config["models"]):
-                        self.model_combo.current(len(self.config["models"]) - 1)
-                    # 否则保持相同的索引
-                    else:
-                        self.model_combo.current(current_index)
+            messagebox.showinfo("成功", f"已删除模型 '{model_name}'")
 
-                messagebox.showinfo("成功", f"已删除模型 '{model_name}'")
-                return
+    def save_config(self):
+        """保存配置"""
+        self.config_manager.save_config()
 
     def add_prompt(self):
         """添加新提示词"""
@@ -571,13 +405,13 @@ class LLMChatApp:
                     return
 
             # 添加新提示词
-            self.prompts["prompts"].append({
+            self.config_manager.add_prompt({
                 "name": name,
                 "content": content
             })
 
             # 保存提示词
-            self.save_prompts()
+            self.config_manager.save_prompts()
 
             # 更新下拉框
             self.update_prompt_combo()
@@ -641,13 +475,13 @@ class LLMChatApp:
                         return
 
             # 更新提示词
-            self.prompts["prompts"][selected_index] = {
+            self.config_manager.update_prompt(selected_index, {
                 "name": name,
                 "content": content
-            }
+            })
 
             # 保存提示词
-            self.save_prompts()
+            self.config_manager.save_prompts()
 
             # 更新下拉框
             current_selection = self.prompt_combo.current()
@@ -675,34 +509,30 @@ class LLMChatApp:
         prompt_name = self.prompt_combo.get()
 
         # 删除提示词
-        for i, prompt in enumerate(self.prompts["prompts"]):
-            if prompt["name"] == prompt_name:
-                del self.prompts["prompts"][i]
+        if self.config_manager.delete_prompt(prompt_name):
+            # 保存提示词
+            self.config_manager.save_prompts()
 
-                # 保存提示词
-                self.save_prompts()
+            # 更新下拉框
+            self.update_prompt_combo()
 
-                # 更新下拉框
-                self.update_prompt_combo()
-
-                # 选择下一个可用的提示词
-                if self.prompts["prompts"]:
-                    # 如果删除的是最后一个提示词，选择新的最后一个
-                    if current_index >= len(self.prompts["prompts"]):
-                        self.prompt_combo.current(len(self.prompts["prompts"]) - 1)
-                    # 否则保持相同的索引
-                    else:
-                        self.prompt_combo.current(current_index)
-                    # 更新提示词内容显示区域
-                    self.on_prompt_selected(None)
+            # 选择下一个可用的提示词
+            if self.prompts["prompts"]:
+                # 如果删除的是最后一个提示词，选择新的最后一个
+                if current_index >= len(self.prompts["prompts"]):
+                    self.prompt_combo.current(len(self.prompts["prompts"]) - 1)
+                # 否则保持相同的索引
                 else:
-                    # 如果没有提示词了，清空提示词内容显示区域
-                    self.prompt_content_text.config(state=tk.NORMAL)
-                    self.prompt_content_text.delete(1.0, tk.END)
-                    self.prompt_content_text.config(state=tk.DISABLED)
+                    self.prompt_combo.current(current_index)
+                # 更新提示词内容显示区域
+                self.on_prompt_selected(None)
+            else:
+                # 如果没有提示词了，清空提示词内容显示区域
+                self.prompt_content_text.config(state=tk.NORMAL)
+                self.prompt_content_text.delete(1.0, tk.END)
+                self.prompt_content_text.config(state=tk.DISABLED)
 
-                messagebox.showinfo("成功", f"已删除提示词 '{prompt_name}'")
-                return
+            messagebox.showinfo("成功", f"已删除提示词 '{prompt_name}'")
 
     def send_message(self):
         """发送消息"""
@@ -716,11 +546,7 @@ class LLMChatApp:
             return
 
         # 获取选中的模型
-        selected_model = None
-        for model in self.config["models"]:
-            if model["name"] == self.model_combo.get():
-                selected_model = model
-                break
+        selected_model = self.config_manager.get_model_by_name(self.model_combo.get())
 
         if not selected_model:
             messagebox.showerror("错误", "未找到选中的模型")
@@ -729,11 +555,7 @@ class LLMChatApp:
         # 检查是否选择了提示词，如果选择了，将提示词内容加在用户输入内容前面
         message = user_message
         if self.prompt_combo.get():
-            selected_prompt = None
-            for prompt in self.prompts["prompts"]:
-                if prompt["name"] == self.prompt_combo.get():
-                    selected_prompt = prompt
-                    break
+            selected_prompt = self.config_manager.get_prompt_by_name(self.prompt_combo.get())
 
             if selected_prompt:
                 # 将提示词内容加在用户输入内容前面
@@ -891,11 +713,3 @@ class LLMChatApp:
             self.toggle_button.config(text="◀")
             # 更新状态
             self.sidebar_visible = True
-
-def main():
-    root = tk.Tk()
-    app = LLMChatApp(root)
-    root.mainloop()
-
-if __name__ == "__main__":
-    main()
