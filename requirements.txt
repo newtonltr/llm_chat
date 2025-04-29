@@ -1,0 +1,16 @@
+# LLM聊天程序依赖
+# 基本HTTP请求库
+requests==2.32.3
+
+# HTTP请求相关依赖
+certifi==2025.4.26
+charset-normalizer==3.4.1
+idna==3.10
+urllib3==2.4.0
+
+# 注意：此项目主要使用Python标准库组件，如：
+# - tkinter (GUI界面)
+# - json (配置文件处理)
+# - threading (后台任务处理)
+# - abc (抽象基类)
+# 这些是Python标准库的一部分，不需要额外安装
