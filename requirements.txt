@@ -8,9 +8,16 @@ charset-normalizer==3.4.1
 idna==3.10
 urllib3==2.4.0
 
-# 注意：此项目主要使用Python标准库组件，如：
-# - tkinter (GUI界面)
-# - json (配置文件处理)
-# - threading (后台任务处理)
-# - abc (抽象基类)
-# 这些是Python标准库的一部分，不需要额外安装
+# GUI框架 (可选，根据需要安装)
+# 如果使用PyQt5版本
+PyQt5==5.15.9
+
+# 注意：
+# 1. 此项目使用Python标准库组件，如：
+#    - json (配置文件处理)
+#    - threading (后台任务处理)
+#    - abc (抽象基类)
+#    - tkinter (GUI框架，Python标准库的一部分)
+#    这些是Python标准库的一部分，不需要额外安装
+#
+# 2. 程序启动时会自动检测可用的GUI框架，并提供选择

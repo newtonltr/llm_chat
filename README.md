@@ -1,7 +1,6 @@
 # LLM聊天程序 (LLM Chat Application)
 
-一个基于Python和Tkinter的大语言模型聊天应用程序，支持多种LLM API接口，提供友好的图形用户界面，方便用户与各种大语言模型进行交互。
-
+一个基于Python和PyQt5的大语言模型聊天应用程序，支持多种LLM API接口，提供友好的图形用户界面，方便用户与各种大语言模型进行交互。
 
 ## 功能特点
 
@@ -31,16 +30,26 @@ git clone https://github.com/newtonltr/llm_chat.git
 cd llm-chat-app
 ```
 
-2. 安装依赖：
+1. 安装依赖：
 
 ```bash
 pip install -r requirements.txt
 ```
 
-3. 运行应用程序：
+1. 运行应用程序：
 
 ```bash
-python llm_chat.py
+python main.py  # 会弹出GUI选择框，让您选择使用PyQt5或Tkinter框架
+# 或者直接指定框架
+python main.py -qt  # 使用PyQt5框架
+python main.py -tk  # 使用Tkinter框架
+```
+
+您也可以直接运行特定版本：
+
+```bash
+python main_qt.py  # 直接运行PyQt5版本
+python main_tk.py  # 直接运行Tkinter版本
 ```
 
 ## 配置说明
@@ -113,16 +122,35 @@ python llm_chat.py
 
 ### 项目结构
 
-- `llm_chat.py`: 主程序文件
+- `main.py`: 程序入口文件（框架选择器）
+- `main_qt.py`: PyQt5版本入口文件
+- `main_tk.py`: Tkinter版本入口文件
+- `model_handlers.py`: 模型处理器类
+- `config_manager.py`: 配置管理类
+- `ui_components_qt.py`: PyQt5用户界面组件
+- `ui_components.py`: Tkinter用户界面组件
 - `llm_config.json`: 模型配置文件
 - `prompts.json`: 提示词配置文件
 - `requirements.txt`: 依赖列表
+
+### 技术实现细节
+
+#### 多线程处理
+
+为了保持UI的响应性，程序在后台线程中处理API请求：
+
+- **PyQt5版本**：使用信号槽机制（Signals/Slots）在线程间安全通信
+  - `response_received`信号：从工作线程发送模型回复到主线程
+  - `error_signal`信号：从工作线程发送错误消息到主线程
+  - `ui_reset_signal`信号：重置UI状态
+
+- **Tkinter版本**：使用`after`方法在主线程中安全更新UI
 
 ### 添加新的API支持
 
 要添加对新API的支持，需要：
 
-1. 在`llm_chat.py`中创建一个新的处理器类，继承自`ModelHandler`
+1. 在`model_handlers.py`中创建一个新的处理器类，继承自`ModelHandler`
 2. 实现`send_message`方法
 3. 在`create_model_handler`函数中添加对新API的识别逻辑
 
