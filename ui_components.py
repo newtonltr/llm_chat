@@ -28,6 +28,15 @@ class LLMChatApp:
         self.config = self.config_manager.load_config()
         self.prompts = self.config_manager.load_prompts()
 
+        # 英文提问按钮状态
+        self.english_translation_enabled = False
+
+        # 对话历史记录
+        self.chat_history = []
+
+        # 上下文对话保留长度，默认为10
+        self.context_length = 10
+
         # 创建界面
         self.create_ui()
 
@@ -99,6 +108,37 @@ class LLMChatApp:
         self.prompt_content_text.pack(fill=tk.BOTH, expand=True, pady=5)
         self.prompt_content_text.config(state=tk.DISABLED)
 
+        # 上下文设置框架
+        context_frame = ttk.LabelFrame(self.left_frame, text="上下文设置")
+        context_frame.pack(fill=tk.X, padx=5, pady=5)
+
+        # 上下文长度滑动条
+        context_label = ttk.Label(context_frame, text="设置对话上下文保留长度:")
+        context_label.pack(fill=tk.X, pady=(5, 0))
+
+        # 滑动条和值显示的框架
+        slider_frame = ttk.Frame(context_frame)
+        slider_frame.pack(fill=tk.X, pady=5)
+
+        # 创建滑动条
+        self.context_slider = ttk.Scale(
+            slider_frame,
+            from_=0,
+            to=20,
+            orient=tk.HORIZONTAL,
+            value=self.context_length,
+            command=self.on_context_length_changed
+        )
+        self.context_slider.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
+
+        # 创建值显示标签
+        self.context_value_label = ttk.Label(slider_frame, text=str(self.context_length))
+        self.context_value_label.pack(side=tk.RIGHT)
+
+        # 添加说明文本
+        context_info = ttk.Label(context_frame, text="0表示不保留历史对话，20表示保留最多20轮对话")
+        context_info.pack(fill=tk.X, pady=(0, 5))
+
         # 创建切换按钮框架
         self.toggle_frame = ttk.Frame(main_frame, width=20)
         self.toggle_frame.pack(side=tk.LEFT, fill=tk.Y, padx=2, pady=5)
@@ -162,6 +202,22 @@ class LLMChatApp:
 
         self.send_button = ttk.Button(input_frame, text="发送", command=self.send_message)
         self.send_button.pack(side=tk.RIGHT, padx=5)
+
+        # 添加英文提问按钮
+        button_frame = ttk.Frame(self.right_frame)
+        button_frame.pack(fill=tk.X, pady=5)
+
+        # 创建一个变量来跟踪按钮状态
+        self.english_var = tk.BooleanVar(value=False)
+
+        # 创建英文提问按钮
+        self.english_button = ttk.Checkbutton(
+            button_frame,
+            text="英文提问",
+            variable=self.english_var,
+            command=self.toggle_english_translation
+        )
+        self.english_button.pack(side=tk.RIGHT, padx=5)
 
         # 更新模型和提示词下拉框
         self.update_model_combo()
@@ -552,15 +608,6 @@ class LLMChatApp:
             messagebox.showerror("错误", "未找到选中的模型")
             return
 
-        # 检查是否选择了提示词，如果选择了，将提示词内容加在用户输入内容前面
-        message = user_message
-        if self.prompt_combo.get():
-            selected_prompt = self.config_manager.get_prompt_by_name(self.prompt_combo.get())
-
-            if selected_prompt:
-                # 将提示词内容加在用户输入内容前面
-                message = selected_prompt["content"] + "\n\n" + user_message
-
         # 在聊天记录中显示用户消息（只显示用户输入的部分，不显示提示词）
         self.chat_text.config(state=tk.NORMAL)
 
@@ -599,10 +646,45 @@ class LLMChatApp:
         # 设置等待光标
         self.root.config(cursor="wait")
 
+        # 将用户消息添加到对话历史记录
+        self.chat_history.append({"role": "user", "content": user_message})
+
         # 在后台线程中发送消息
         def send_in_background():
             try:
-                response = handler.send_message(message)
+                # 检查是否启用了英文提问
+                if self.english_translation_enabled:
+                    # 获取英文翻译提示词
+                    en_tran_prompt = self.config_manager.get_prompt_by_name("en_tran")
+
+                    if not en_tran_prompt:
+                        self.root.after(0, self.show_error, "未找到英文翻译提示词'en_tran'，请确保已添加该提示词")
+                        return
+
+                    # 构建翻译请求
+                    translation_message = en_tran_prompt["content"] + "\n\n" + user_message
+
+                    # 发送翻译请求
+                    translated_message = handler.send_message(translation_message)
+
+                    # 使用翻译后的消息构建最终请求
+                    final_message = self.build_final_message(translated_message)
+
+                    # 获取历史对话记录（根据滑动条设置的长度）
+                    history = self.get_chat_history_for_context()
+
+                    # 发送最终请求（包含历史记录）
+                    response = handler.send_message(final_message, history)
+                else:
+                    # 直接使用原始消息构建最终请求
+                    final_message = self.build_final_message(user_message)
+
+                    # 获取历史对话记录（根据滑动条设置的长度）
+                    history = self.get_chat_history_for_context()
+
+                    # 发送最终请求（包含历史记录）
+                    response = handler.send_message(final_message, history)
+
                 # 使用after方法在主线程中更新UI
                 self.root.after(0, self.update_chat_with_response, handler.name, response)
             except Exception as e:
@@ -614,6 +696,20 @@ class LLMChatApp:
 
         # 启动后台线程
         threading.Thread(target=send_in_background, daemon=True).start()
+
+    def build_final_message(self, user_message):
+        """构建最终发送给模型的消息，包含提示词"""
+        # 检查是否选择了提示词
+        if self.prompt_combo.get():
+            prompt_name = self.prompt_combo.get()
+            selected_prompt = self.config_manager.get_prompt_by_name(prompt_name)
+
+            if selected_prompt and prompt_name != "en_tran":  # 确保不是使用翻译提示词
+                # 将提示词内容加在用户输入内容前面
+                return selected_prompt["content"] + "\n\n" + user_message
+
+        # 如果没有选择提示词或选择的是翻译提示词，直接返回用户消息
+        return user_message
 
     def update_chat_with_response(self, model_name, response):
         """更新聊天记录，显示模型回复"""
@@ -630,6 +726,9 @@ class LLMChatApp:
         self.chat_text.see(tk.END)
         self.chat_text.config(state=tk.DISABLED)
 
+        # 将模型回复添加到对话历史记录
+        self.chat_history.append({"role": "assistant", "content": response})
+
     def show_error(self, error_message):
         """显示错误消息"""
         messagebox.showerror("错误", error_message)
@@ -645,6 +744,9 @@ class LLMChatApp:
             self.chat_text.config(state=tk.NORMAL)
             self.chat_text.delete(1.0, tk.END)
             self.chat_text.config(state=tk.DISABLED)
+
+            # 同时清除对话历史记录
+            self.chat_history = []
 
     def show_context_menu(self, event):
         """显示右键菜单"""
@@ -713,3 +815,43 @@ class LLMChatApp:
             self.toggle_button.config(text="◀")
             # 更新状态
             self.sidebar_visible = True
+
+    def toggle_english_translation(self):
+        """切换英文提问按钮状态"""
+        self.english_translation_enabled = self.english_var.get()
+
+        # 根据状态更改按钮样式
+        style = ttk.Style()
+        if self.english_translation_enabled:
+            style.configure("TCheckbutton", background="#007bff", foreground="white")
+            self.english_button.configure(style="TCheckbutton")
+        else:
+            style.configure("TCheckbutton", background="", foreground="")
+            self.english_button.configure(style="TCheckbutton")
+
+    def on_context_length_changed(self, value):
+        """处理上下文长度滑动条值变化"""
+        # 将字符串值转换为整数
+        self.context_length = int(float(value))
+        self.context_value_label.config(text=str(self.context_length))
+
+    def get_chat_history_for_context(self):
+        """根据设置的上下文长度，获取要包含在请求中的对话历史记录"""
+        # 如果上下文长度为0，不包含历史记录
+        if self.context_length == 0 or len(self.chat_history) == 0:
+            return []
+
+        # 计算要包含的对话轮数（每轮包含用户和助手的消息）
+        # 由于我们是按消息存储的，所以需要乘以2
+        context_pairs = self.context_length
+
+        # 确保不超过历史记录的长度
+        if context_pairs * 2 > len(self.chat_history):
+            # 返回所有历史记录，但不包括最后一条（最后一条是当前用户消息，会在send_message中单独处理）
+            return self.chat_history[:-1]
+        else:
+            # 返回指定长度的历史记录，但不包括最后一条
+            start_index = len(self.chat_history) - 1 - (context_pairs * 2)
+            if start_index < 0:
+                start_index = 0
+            return self.chat_history[start_index:-1]

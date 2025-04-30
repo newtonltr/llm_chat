@@ -11,7 +11,7 @@ import threading
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                             QLabel, QComboBox, QPushButton, QTextEdit, QLineEdit,
                             QFrame, QSplitter, QDialog, QFormLayout, QMessageBox,
-                            QMenu, QAction, QGroupBox, QGridLayout)
+                            QMenu, QAction, QGroupBox, QGridLayout, QSlider)
 from PyQt5.QtCore import Qt, QSize, pyqtSignal, pyqtSlot
 from PyQt5.QtGui import QFont, QTextCursor, QIcon
 
@@ -43,6 +43,15 @@ class LLMChatApp(QMainWindow):
 
         # 侧边栏可见状态
         self.sidebar_visible = True
+
+        # 英文提问按钮状态
+        self.english_translation_enabled = False
+
+        # 对话历史记录
+        self.chat_history = []
+
+        # 上下文对话保留长度，默认为10
+        self.context_length = 10
 
         # 连接信号和槽
         self.response_received.connect(self.update_chat_with_response)
@@ -139,6 +148,37 @@ class LLMChatApp(QMainWindow):
 
         left_layout.addWidget(prompt_group)
 
+        # 上下文设置组
+        context_group = QGroupBox("上下文设置")
+        context_layout = QVBoxLayout(context_group)
+
+        # 添加说明标签
+        context_layout.addWidget(QLabel("设置对话上下文保留长度:"))
+
+        # 创建滑动条和值显示的布局
+        slider_layout = QHBoxLayout()
+
+        # 创建滑动条
+        self.context_slider = QSlider(Qt.Horizontal)
+        self.context_slider.setMinimum(0)
+        self.context_slider.setMaximum(20)
+        self.context_slider.setValue(self.context_length)  # 默认值为10
+        self.context_slider.setTickPosition(QSlider.TicksBelow)
+        self.context_slider.setTickInterval(5)
+        self.context_slider.valueChanged.connect(self.on_context_length_changed)
+        slider_layout.addWidget(self.context_slider)
+
+        # 创建值显示标签
+        self.context_value_label = QLabel(str(self.context_length))
+        slider_layout.addWidget(self.context_value_label)
+
+        context_layout.addLayout(slider_layout)
+
+        # 添加说明文本
+        context_layout.addWidget(QLabel("0表示不保留历史对话，20表示保留最多20轮对话"))
+
+        left_layout.addWidget(context_group)
+
         # 创建切换按钮
         self.toggle_btn = QPushButton("◀")
         self.toggle_btn.setFixedWidth(20)
@@ -172,14 +212,31 @@ class LLMChatApp(QMainWindow):
         right_layout.addWidget(self.chat_text)
 
         # 输入框和发送按钮
-        input_layout = QHBoxLayout()
+        input_layout = QVBoxLayout()
+
+        # 输入框
+        text_layout = QHBoxLayout()
         self.input_text = QTextEdit()
         self.input_text.setFixedHeight(100)
-        input_layout.addWidget(self.input_text)
+        text_layout.addWidget(self.input_text)
 
+        # 发送按钮
         self.send_button = QPushButton("发送")
         self.send_button.clicked.connect(self.send_message)
-        input_layout.addWidget(self.send_button)
+        text_layout.addWidget(self.send_button)
+
+        input_layout.addLayout(text_layout)
+
+        # 添加英文提问按钮
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+
+        self.english_button = QPushButton("英文提问")
+        self.english_button.setCheckable(True)  # 使按钮可切换
+        self.english_button.clicked.connect(self.toggle_english_translation)
+        button_layout.addWidget(self.english_button)
+
+        input_layout.addLayout(button_layout)
 
         right_layout.addLayout(input_layout)
 
@@ -619,16 +676,6 @@ class LLMChatApp(QMainWindow):
             QMessageBox.warning(self, "错误", "未找到选中的模型")
             return
 
-        # 检查是否选择了提示词，如果选择了，将提示词内容加在用户输入内容前面
-        message = user_message
-        if self.prompt_combo.count() > 0:
-            prompt_name = self.prompt_combo.currentText()
-            selected_prompt = self.config_manager.get_prompt_by_name(prompt_name)
-
-            if selected_prompt:
-                # 将提示词内容加在用户输入内容前面
-                message = selected_prompt["content"] + "\n\n" + user_message
-
         # 在聊天记录中显示用户消息（只显示用户输入的部分，不显示提示词）
         # 添加分隔线
         if not self.chat_text.toPlainText().strip() == "":
@@ -661,10 +708,45 @@ class LLMChatApp(QMainWindow):
         # 禁用发送按钮，防止重复发送
         self.send_button.setEnabled(False)
 
+        # 将用户消息添加到对话历史记录
+        self.chat_history.append({"role": "user", "content": user_message})
+
         # 在后台线程中发送消息
         def send_in_background():
             try:
-                response = handler.send_message(message)
+                # 检查是否启用了英文提问
+                if self.english_translation_enabled:
+                    # 获取英文翻译提示词
+                    en_tran_prompt = self.config_manager.get_prompt_by_name("en_tran")
+
+                    if not en_tran_prompt:
+                        self.error_signal.emit("未找到英文翻译提示词'en_tran'，请确保已添加该提示词")
+                        return
+
+                    # 构建翻译请求
+                    translation_message = en_tran_prompt["content"] + "\n\n" + user_message
+
+                    # 发送翻译请求
+                    translated_message = handler.send_message(translation_message)
+
+                    # 使用翻译后的消息构建最终请求
+                    final_message = self.build_final_message(translated_message)
+
+                    # 获取历史对话记录（根据滑动条设置的长度）
+                    history = self.get_chat_history_for_context()
+
+                    # 发送最终请求（包含历史记录）
+                    response = handler.send_message(final_message, history)
+                else:
+                    # 直接使用原始消息构建最终请求
+                    final_message = self.build_final_message(user_message)
+
+                    # 获取历史对话记录（根据滑动条设置的长度）
+                    history = self.get_chat_history_for_context()
+
+                    # 发送最终请求（包含历史记录）
+                    response = handler.send_message(final_message, history)
+
                 # 使用信号槽机制在主线程中更新UI
                 self.response_received.emit(handler.name, response)
             except Exception as e:
@@ -677,6 +759,20 @@ class LLMChatApp(QMainWindow):
 
         # 启动后台线程
         threading.Thread(target=send_in_background, daemon=True).start()
+
+    def build_final_message(self, user_message):
+        """构建最终发送给模型的消息，包含提示词"""
+        # 检查是否选择了提示词
+        if self.prompt_combo.count() > 0:
+            prompt_name = self.prompt_combo.currentText()
+            selected_prompt = self.config_manager.get_prompt_by_name(prompt_name)
+
+            if selected_prompt and prompt_name != "en_tran":  # 确保不是使用翻译提示词
+                # 将提示词内容加在用户输入内容前面
+                return selected_prompt["content"] + "\n\n" + user_message
+
+        # 如果没有选择提示词或选择的是翻译提示词，直接返回用户消息
+        return user_message
 
     def update_chat_with_response(self, model_name, response):
         """更新聊天记录，显示模型回复"""
@@ -707,6 +803,9 @@ class LLMChatApp(QMainWindow):
         # 滚动到底部
         self.chat_text.verticalScrollBar().setValue(self.chat_text.verticalScrollBar().maximum())
 
+        # 将模型回复添加到对话历史记录
+        self.chat_history.append({"role": "assistant", "content": response})
+
     def reset_ui_after_send(self):
         """重置UI状态"""
         self.send_button.setEnabled(True)
@@ -721,6 +820,8 @@ class LLMChatApp(QMainWindow):
                                     QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
         if reply == QMessageBox.Yes:
             self.chat_text.clear()
+            # 同时清除对话历史记录
+            self.chat_history = []
 
     def show_context_menu(self, position):
         """显示右键菜单"""
@@ -779,3 +880,37 @@ class LLMChatApp(QMainWindow):
             self.toggle_btn.setText("◀")
             # 更新状态
             self.sidebar_visible = True
+
+    def toggle_english_translation(self):
+        """切换英文提问按钮状态"""
+        self.english_translation_enabled = self.english_button.isChecked()
+        if self.english_translation_enabled:
+            self.english_button.setStyleSheet("background-color: #007bff; color: white;")
+        else:
+            self.english_button.setStyleSheet("")
+
+    def on_context_length_changed(self, value):
+        """处理上下文长度滑动条值变化"""
+        self.context_length = value
+        self.context_value_label.setText(str(value))
+
+    def get_chat_history_for_context(self):
+        """根据设置的上下文长度，获取要包含在请求中的对话历史记录"""
+        # 如果上下文长度为0，不包含历史记录
+        if self.context_length == 0 or len(self.chat_history) == 0:
+            return []
+
+        # 计算要包含的对话轮数（每轮包含用户和助手的消息）
+        # 由于我们是按消息存储的，所以需要乘以2
+        context_pairs = self.context_length
+
+        # 确保不超过历史记录的长度
+        if context_pairs * 2 > len(self.chat_history):
+            # 返回所有历史记录，但不包括最后一条（最后一条是当前用户消息，会在send_message中单独处理）
+            return self.chat_history[:-1]
+        else:
+            # 返回指定长度的历史记录，但不包括最后一条
+            start_index = len(self.chat_history) - 1 - (context_pairs * 2)
+            if start_index < 0:
+                start_index = 0
+            return self.chat_history[start_index:-1]

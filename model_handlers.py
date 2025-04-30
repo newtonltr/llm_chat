@@ -26,15 +26,24 @@ class ModelHandler(ABC):
 class OpenRouterHandler(ModelHandler):
     """OpenRouter API处理器"""
 
-    def send_message(self, message):
+    def send_message(self, message, history=None):
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
         }
 
+        # 如果提供了历史记录，使用历史记录构建消息列表
+        if history and isinstance(history, list) and len(history) > 0:
+            messages = history.copy()
+            # 添加当前用户消息
+            messages.append({"role": "user", "content": message})
+        else:
+            # 如果没有历史记录，只发送当前消息
+            messages = [{"role": "user", "content": message}]
+
         data = {
             "model": self.model_name,
-            "messages": [{"role": "user", "content": message}]
+            "messages": messages
         }
 
         try:
@@ -48,7 +57,7 @@ class OpenRouterHandler(ModelHandler):
 class GeminiHandler(ModelHandler):
     """Google Gemini API处理器"""
 
-    def send_message(self, message):
+    def send_message(self, message, history=None):
         # 构建正确的URL格式
         # 如果api_url中已经包含了模型名称和:generateContent，则直接使用
         # 否则，构建正确的URL
@@ -59,15 +68,43 @@ class GeminiHandler(ModelHandler):
             base_url = "https://generativelanguage.googleapis.com/v1beta/models"
             url = f"{base_url}/{self.model_name}:generateContent?key={self.api_key}"
 
-        data = {
-            "contents": [
-                {
-                    "parts": [
-                        {"text": message}
-                    ]
-                }
-            ]
-        }
+        # 如果提供了历史记录，构建多轮对话内容
+        if history and isinstance(history, list) and len(history) > 0:
+            contents = []
+
+            # 将历史记录转换为Gemini格式
+            for entry in history:
+                role = entry.get("role", "")
+                content = entry.get("content", "")
+
+                # 在Gemini API中，用户是"user"，助手是"model"
+                gemini_role = "user" if role == "user" else "model"
+
+                contents.append({
+                    "role": gemini_role,
+                    "parts": [{"text": content}]
+                })
+
+            # 添加当前用户消息
+            contents.append({
+                "role": "user",
+                "parts": [{"text": message}]
+            })
+
+            data = {
+                "contents": contents
+            }
+        else:
+            # 如果没有历史记录，只发送当前消息
+            data = {
+                "contents": [
+                    {
+                        "parts": [
+                            {"text": message}
+                        ]
+                    }
+                ]
+            }
 
         headers = {
             "Content-Type": "application/json"
@@ -84,15 +121,24 @@ class GeminiHandler(ModelHandler):
 class DeepSeekHandler(ModelHandler):
     """DeepSeek API处理器"""
 
-    def send_message(self, message):
+    def send_message(self, message, history=None):
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
         }
 
+        # 如果提供了历史记录，使用历史记录构建消息列表
+        if history and isinstance(history, list) and len(history) > 0:
+            messages = history.copy()
+            # 添加当前用户消息
+            messages.append({"role": "user", "content": message})
+        else:
+            # 如果没有历史记录，只发送当前消息
+            messages = [{"role": "user", "content": message}]
+
         data = {
             "model": self.model_name,
-            "messages": [{"role": "user", "content": message}]
+            "messages": messages
         }
 
         try:
