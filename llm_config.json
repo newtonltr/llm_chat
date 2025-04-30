@@ -1,16 +1,16 @@
 {
     "models": [
         {
-            "name": "openrouter-tngtech/deepseek-r1t-chimera:free",
-            "api_key": "",
-            "api_url": "https://openrouter.ai/api/v1/chat/completions",
-            "model_name": "tngtech/deepseek-r1t-chimera:free"
-        },
-        {
-            "name": "openrouter-microsoft/mai-ds-r1:free",
+            "name": "mai-ds-r1",
             "api_key": "",
             "api_url": "https://openrouter.ai/api/v1/chat/completions",
             "model_name": "microsoft/mai-ds-r1:free"
+        },
+        {
+            "name": "deepseek-r1t-chimera",
+            "api_key": "",
+            "api_url": "https://openrouter.ai/api/v1/chat/completions",
+            "model_name": "tngtech/deepseek-r1t-chimera:free"
         },
         {
             "name": "gemini-2.0 flash",
@@ -35,6 +35,18 @@
             "api_key": "",
             "api_url": "https://generativelanguage.googleapis.com/v1beta/models",
             "model_name": "gemini-2.5-flash-preview-04-17"
+        },
+        {
+            "name": "or/gemini-2.5-pro-exp-03-25",
+            "api_key": "",
+            "api_url": "https://openrouter.ai/api/v1/chat/completions",
+            "model_name": "google/gemini-2.5-pro-exp-03-25"
+        },
+        {
+            "name": "or/gemini-2.0-flash-exp:free",
+            "api_key": "",
+            "api_url": "https://openrouter.ai/api/v1/chat/completions",
+            "model_name": "google/gemini-2.0-flash-exp:free"
         }
     ]
 }
