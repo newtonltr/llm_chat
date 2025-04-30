@@ -163,6 +163,8 @@ class LLMChatApp(QMainWindow):
         self.chat_text.setReadOnly(True)
         self.chat_text.setContextMenuPolicy(Qt.CustomContextMenu)
         self.chat_text.customContextMenuRequested.connect(self.show_context_menu)
+        # 启用HTML支持
+        self.chat_text.setAcceptRichText(True)
         right_layout.addWidget(self.chat_text)
 
         # 输入框和发送按钮
@@ -648,14 +650,11 @@ class LLMChatApp(QMainWindow):
             QMessageBox.critical(self, "错误", f"创建模型处理器时出错: {str(e)}")
             return
 
-        # 添加状态指示
-        self.chat_text.append(f"{handler.name}: 正在思考中...")
+        # 添加状态指示（使用HTML格式使其更加明显）
+        self.chat_text.append(f'<span style="color: #0066cc; font-weight: bold;">{handler.name}: 正在思考中...</span>')
 
         # 禁用发送按钮，防止重复发送
         self.send_button.setEnabled(False)
-
-        # 设置等待光标
-        QApplication.setOverrideCursor(Qt.WaitCursor)
 
         # 在后台线程中发送消息
         def send_in_background():
@@ -676,18 +675,21 @@ class LLMChatApp(QMainWindow):
 
     def update_chat_with_response(self, model_name, response):
         """更新聊天记录，显示模型回复"""
-        # 删除最后一行的"正在思考中..."提示
-        current_text = self.chat_text.toPlainText()
-        if current_text.endswith(f"{model_name}: 正在思考中..."):
-            # 找到最后一行的开始位置
-            last_line_start = current_text.rfind("\n", 0, len(current_text) - 1)
-            if last_line_start == -1:  # 如果没有找到换行符，说明只有一行
-                last_line_start = 0
-            else:
-                last_line_start += 1  # 跳过换行符
+        # 获取当前文本的HTML
+        current_html = self.chat_text.toHtml()
 
-            # 设置文本，去掉最后一行
-            self.chat_text.setPlainText(current_text[:last_line_start])
+        # 查找并删除"正在思考中..."的HTML标记
+        thinking_text = f'<span style="color: #0066cc; font-weight: bold;">{model_name}: 正在思考中...</span>'
+        if thinking_text in current_html:
+            # 找到最后一个段落的开始位置
+            last_para_start = current_html.rfind("<p", 0, current_html.rfind(thinking_text))
+            if last_para_start != -1:
+                # 找到段落的结束位置
+                last_para_end = current_html.find("</p>", last_para_start) + 4
+
+                # 删除包含"正在思考中..."的段落
+                current_html = current_html[:last_para_start] + current_html[last_para_end:]
+                self.chat_text.setHtml(current_html)
 
         # 添加模型回复头部
         self.chat_text.append(f"{model_name} (AI):")
@@ -702,7 +704,6 @@ class LLMChatApp(QMainWindow):
     def reset_ui_after_send(self):
         """重置UI状态"""
         self.send_button.setEnabled(True)
-        QApplication.restoreOverrideCursor()
 
     def show_error(self, error_message):
         """显示错误消息"""
