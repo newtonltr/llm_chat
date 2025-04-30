@@ -84,7 +84,7 @@ class LLMChatApp(QMainWindow):
         model_layout = QVBoxLayout(model_group)
 
         # 模型选择
-        model_select_layout = QHBoxLayout()
+        model_select_layout = QVBoxLayout()
         model_select_layout.addWidget(QLabel("选择模型:"))
         self.model_combo = QComboBox()
         self.model_combo.currentIndexChanged.connect(self.on_model_selected)
