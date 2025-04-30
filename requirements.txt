@@ -12,6 +12,10 @@ urllib3==2.4.0
 # 如果使用PyQt5版本
 PyQt5==5.15.9
 
+# Markdown支持
+markdown==3.5.2
+Pygments==2.17.2  # 用于代码高亮
+
 # 注意：
 # 1. 此项目使用Python标准库组件，如：
 #    - json (配置文件处理)

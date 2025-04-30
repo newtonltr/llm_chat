@@ -17,6 +17,7 @@ from PyQt5.QtGui import QFont, QTextCursor, QIcon
 
 from model_handlers import create_model_handler
 from config_manager import ConfigManager
+from markdown_utils import md_to_html, get_markdown_css
 
 class LLMChatApp(QMainWindow):
     """LLM聊天应用程序 (PyQt5版本)"""
@@ -50,6 +51,9 @@ class LLMChatApp(QMainWindow):
 
         # 创建界面
         self.create_ui()
+
+        # 设置Markdown样式
+        self.setup_markdown_style()
 
     def create_ui(self):
         """创建用户界面"""
@@ -631,10 +635,11 @@ class LLMChatApp(QMainWindow):
             self.chat_text.append("-" * 50)
 
         # 添加用户消息头部
-        self.chat_text.append("你 (用户):")
+        self.chat_text.append("<strong>你 (用户):</strong>")
 
-        # 添加用户消息内容
-        self.chat_text.append(user_message)
+        # 将用户消息转换为HTML并添加
+        user_message_html = md_to_html(user_message)
+        self.chat_text.append(user_message_html)
         self.chat_text.append("")  # 空行
 
         # 滚动到底部
@@ -692,10 +697,11 @@ class LLMChatApp(QMainWindow):
                 self.chat_text.setHtml(current_html)
 
         # 添加模型回复头部
-        self.chat_text.append(f"{model_name} (AI):")
+        self.chat_text.append(f"<strong>{model_name} (AI):</strong>")
 
-        # 添加模型回复内容
-        self.chat_text.append(response)
+        # 将模型回复转换为HTML并添加
+        response_html = md_to_html(response)
+        self.chat_text.append(response_html)
         self.chat_text.append("")  # 空行
 
         # 滚动到底部
@@ -735,6 +741,27 @@ class LLMChatApp(QMainWindow):
         # 取消选择
         cursor.clearSelection()
         self.chat_text.setTextCursor(cursor)
+
+    def setup_markdown_style(self):
+        """设置Markdown样式"""
+        # 获取Markdown CSS样式
+        css = get_markdown_css()
+
+        # 创建样式表
+        style_sheet = f"""
+        QTextEdit {{
+            background-color: white;
+            color: black;
+            selection-background-color: #b5d5ff;
+        }}
+        {css}
+        """
+
+        # 应用样式表到聊天文本框
+        self.chat_text.document().setDefaultStyleSheet(style_sheet)
+
+        # 启用富文本
+        self.chat_text.setAcceptRichText(True)
 
     def toggle_sidebar(self):
         """切换左侧面板的显示/隐藏状态"""
